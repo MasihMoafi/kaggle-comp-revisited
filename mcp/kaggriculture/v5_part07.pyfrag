@@ -1,0 +1,24 @@
+      p = msg.get("params") or {}
+        result = await asyncio.to_thread(call_tool, credential["kaggle_token"], str(p.get("name", "")), p.get("arguments") or {})
+        return JSONResponse({"jsonrpc": "2.0", "id": rid, "result": result})
+    return JSONResponse({"jsonrpc": "2.0", "id": rid, "error": {"code": -32601, "message": "Method not found"}})
+
+
+async def options(_: Request) -> Response:
+    return Response(status_code=204, headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization,content-type,mcp-protocol-version", "Access-Control-Allow-Methods": "POST,OPTIONS"})
+
+
+app = Starlette(routes=[
+    Route("/", health, methods=["GET"]),
+    Route("/.well-known/oauth-authorization-server", auth_metadata, methods=["GET"]),
+    Route("/.well-known/openid-configuration", auth_metadata, methods=["GET"]),
+    Route("/.well-known/oauth-protected-resource", resource_metadata, methods=["GET"]),
+    Route("/.well-known/oauth-protected-resource/mcp", resource_metadata, methods=["GET"]),
+    Route("/register", register, methods=["POST"]),
+    Route("/authorize", authorize, methods=["GET"]),
+    Route("/login", login, methods=["GET"]),
+    Route("/login/callback", login_callback, methods=["POST"]),
+    Route("/token", token_endpoint, methods=["POST"]),
+    Route("/mcp", mcp, methods=["POST"]),
+    Route("/mcp", options, methods=["OPTIONS"]),
+])
