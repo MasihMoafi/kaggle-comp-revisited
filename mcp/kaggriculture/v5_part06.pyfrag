@@ -1,0 +1,43 @@
+     tf.add(main, arcname="main.py")
+            r = run_kaggle(token, ["competitions", "submit", COMP, "-f", str(archive), "-m", message], timeout=240)
+        return content(r, not r.get("ok"))
+    if name == "kaggriculture_episodes":
+        r = run_kaggle(token, ["competitions", "episodes", str(int(args.get("submission_id", 0))), "--format", "json"])
+        return content(r, not r.get("ok"))
+    if name in {"kaggriculture_replay", "kaggriculture_logs"}:
+        with tempfile.TemporaryDirectory() as folder:
+            if name == "kaggriculture_replay":
+                cmd = ["competitions", "replay", str(int(args.get("episode_id", 0))), "-p", folder, "-q"]
+            else:
+                cmd = ["competitions", "logs", str(int(args.get("episode_id", 0))), str(int(args.get("agent_index", -1))), "-p", folder, "-q"]
+            r = run_kaggle(token, cmd)
+            if r.get("ok"):
+                r = downloaded(folder)
+        return content(r, not r.get("ok"))
+    return content({"ok": False, "error": "Unknown tool"}, True)
+
+
+async def mcp(request: Request) -> Response:
+    access = bearer(request)
+    if not access:
+        return JSONResponse({"error": "invalid_token"}, status_code=401, headers={"WWW-Authenticate": f'Bearer resource_metadata="{BASE}/.well-known/oauth-protected-resource/mcp", scope="{SCOPE}"'})
+    try:
+        credential = unseal(access, "access")
+    except ValueError:
+        return JSONResponse({"error": "invalid_token"}, status_code=401)
+    try:
+        msg = await request.json()
+    except Exception:
+        return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}, status_code=400)
+    method, rid = msg.get("method"), msg.get("id")
+    if method == "notifications/initialized":
+        return Response(status_code=202)
+    if method == "initialize":
+        version = (msg.get("params") or {}).get("protocolVersion", "2025-06-18")
+        return JSONResponse({"jsonrpc": "2.0", "id": rid, "result": {"protocolVersion": version, "capabilities": {"tools": {"listChanged": False}}, "serverInfo": {"name": "kaggriculture-mcp", "version": "5.0.0"}}})
+    if method == "ping":
+        return JSONResponse({"jsonrpc": "2.0", "id": rid, "result": {}})
+    if method == "tools/list":
+        return JSONResponse({"jsonrpc": "2.0", "id": rid, "result": {"tools": TOOLS}})
+    if method == "tools/call":
+   
