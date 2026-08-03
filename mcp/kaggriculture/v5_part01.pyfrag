@@ -1,0 +1,55 @@
+JSONResponse({
+        "issuer": BASE,
+        "authorization_endpoint": BASE + "/authorize",
+        "token_endpoint": BASE + "/token",
+        "registration_endpoint": BASE + "/register",
+        "scopes_supported": [SCOPE],
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code", "refresh_token"],
+        "token_endpoint_auth_methods_supported": ["none"],
+        "code_challenge_methods_supported": ["S256"],
+    }, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=300"})
+
+
+async def resource_metadata(_: Request) -> JSONResponse:
+    return JSONResponse({
+        "resource": BASE + "/mcp",
+        "authorization_servers": [BASE],
+        "scopes_supported": [SCOPE],
+        "bearer_methods_supported": ["header"],
+    }, headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "public, max-age=300"})
+
+
+async def register(request: Request) -> JSONResponse:
+    try:
+        body = await request.json()
+    except Exception:
+        return oauth_error("invalid_client_metadata", "Expected JSON")
+    redirects = body.get("redirect_uris") or []
+    if not isinstance(redirects, list) or not redirects or not all(isinstance(x, str) and valid_redirect(x) for x in redirects):
+        return oauth_error("invalid_redirect_uri", "Only OpenAI/ChatGPT HTTPS callbacks are accepted")
+    if body.get("token_endpoint_auth_method", "none") != "none":
+        return oauth_error("invalid_client_metadata", "Public OAuth clients only")
+    client_id = seal("client", {"redirects": redirects}, 365 * 86400)
+    return JSONResponse({
+        "client_id": client_id,
+        "client_id_issued_at": now(),
+        "redirect_uris": redirects,
+        "client_name": str(body.get("client_name", "ChatGPT"))[:120],
+        "token_endpoint_auth_method": "none",
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "scope": SCOPE,
+    }, status_code=201)
+
+
+async def authorize(request: Request) -> Response:
+    q = request.query_params
+    if q.get("response_type") != "code":
+        return oauth_error("unsupported_response_type", "Only code is supported")
+    try:
+        client = unseal(q.get("client_id", ""), "client")
+    except ValueError:
+        return oauth_error("invalid_client", "Unknown client")
+    redirect = q.get("redirect_uri", "")
+    challenge = q.get
