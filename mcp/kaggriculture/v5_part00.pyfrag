@@ -1,0 +1,74 @@
+from __future__ import annotations
+
+import asyncio
+import base64
+import hashlib
+import html
+import json
+import os
+import secrets
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, urlencode, urlparse
+
+from cryptography.fernet import Fernet, InvalidToken
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.routing import Route
+
+BASE = "https://kaggriculture-mcp.vercel.app"
+COMP = "kaggriculture"
+SCOPE = "kaggle:kaggriculture"
+# Private deployment salt. It is not exposed by any route or tool.
+_SALT = "kgm5-8a4f9d30-1f7b-4a6a-a76a-2bbd742f9c11-3e79d1c8"
+_KEY = base64.urlsafe_b64encode(hashlib.sha256((_SALT + os.getenv("VERCEL_PROJECT_ID", "kgm")).encode()).digest())
+FERNET = Fernet(_KEY)
+
+
+def now() -> int:
+    return int(time.time())
+
+
+def seal(kind: str, data: dict[str, Any], ttl: int) -> str:
+    return FERNET.encrypt(json.dumps({"kind": kind, "exp": now() + ttl, **data}, separators=(",", ":")).encode()).decode()
+
+
+def unseal(value: str, kind: str) -> dict[str, Any]:
+    try:
+        data = json.loads(FERNET.decrypt(value.encode()).decode())
+    except (InvalidToken, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid token") from exc
+    if data.get("kind") != kind or int(data.get("exp", 0)) < now():
+        raise ValueError("expired token")
+    return data
+
+
+def valid_redirect(uri: str) -> bool:
+    p = urlparse(uri)
+    host = (p.hostname or "").lower()
+    return p.scheme == "https" and not p.fragment and (
+        host == "chatgpt.com" or host.endswith(".chatgpt.com") or host == "openai.com" or host.endswith(".openai.com")
+    )
+
+
+def oauth_error(code: str, description: str, status: int = 400) -> JSONResponse:
+    return JSONResponse({"error": code, "error_description": description}, status_code=status)
+
+
+def bearer(request: Request) -> str:
+    header = request.headers.get("authorization", "")
+    return header[7:].strip() if header.lower().startswith("bearer ") else ""
+
+
+async def health(_: Request) -> JSONResponse:
+    return JSONResponse({"ok": True, "service": "kaggriculture-mcp", "oauth": True, "mcp": "/mcp", "version": "5"})
+
+
+async def auth_metadata(_: Request) -> JSONResponse:
+    return 
