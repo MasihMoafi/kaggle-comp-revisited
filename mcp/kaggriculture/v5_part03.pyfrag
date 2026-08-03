@@ -1,0 +1,39 @@
+h in kaggle_token):
+        return HTMLResponse("Invalid Kaggle token format", status_code=400)
+    code = seal("code", {**flow, "kaggle_token": kaggle_token}, 300)
+    params = {"code": code}
+    if flow.get("state"):
+        params["state"] = flow["state"]
+    return RedirectResponse(flow["redirect"] + "?" + urlencode(params), status_code=302)
+
+
+async def token_endpoint(request: Request) -> JSONResponse:
+    form = {k: v[0] for k, v in parse_qs((await request.body()).decode(), keep_blank_values=True).items()}
+    if form.get("grant_type") == "authorization_code":
+        try:
+            code = unseal(form.get("code", ""), "code")
+            client = unseal(form.get("client_id", ""), "client")
+        except ValueError:
+            return oauth_error("invalid_grant", "Invalid authorization code")
+        if form.get("client_id") != code["client_id"] or form.get("redirect_uri") != code["redirect"] or code["redirect"] not in client["redirects"]:
+            return oauth_error("invalid_grant", "OAuth client or redirect mismatch")
+        verifier = form.get("code_verifier", "")
+        digest = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+        if not verifier or digest != code["challenge"]:
+            return oauth_error("invalid_grant", "PKCE failed")
+        access = seal("access", {"kaggle_token": code["kaggle_token"]}, 12 * 3600)
+        refresh = seal("refresh", {"kaggle_token": code["kaggle_token"]}, 30 * 86400)
+        return JSONResponse({"access_token": access, "token_type": "Bearer", "expires_in": 43200, "refresh_token": refresh, "scope": SCOPE}, headers={"Cache-Control": "no-store"})
+    if form.get("grant_type") == "refresh_token":
+        try:
+            refresh = unseal(form.get("refresh_token", ""), "refresh")
+        except ValueError:
+            return oauth_error("invalid_grant", "Invalid refresh token")
+        return JSONResponse({"access_token": seal("access", {"kaggle_token": refresh["kaggle_token"]}, 43200), "token_type": "Bearer", "expires_in": 43200, "scope": SCOPE})
+    return oauth_error("unsupported_grant_type", "Unsupported grant")
+
+
+def run_kaggle(token: str, args: list[str], timeout: int = 180) -> dict[str, Any]:
+    env = os.environ.copy()
+    env.update({"HOME": "/tmp", "KAGGLE_CONFIG_DIR": "/tmp/.kaggle", "KAGGLE_API_TOKEN": token})
+    Path("/tmp/.kaggle").mkdir(parents=True
