@@ -1,0 +1,38 @@
+de replay.", "inputSchema": {"type": "object", "properties": {"episode_id": {"type": "integer", "minimum": 1}}, "required": ["episode_id"], "additionalProperties": False}, "annotations": {"title": "Get replay", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": True}},
+    {"name": "kaggriculture_logs", "description": "Download episode logs for an agent index.", "inputSchema": {"type": "object", "properties": {"episode_id": {"type": "integer", "minimum": 1}, "agent_index": {"type": "integer", "minimum": 0}}, "required": ["episode_id", "agent_index"], "additionalProperties": False}, "annotations": {"title": "Get logs", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": True}},
+]
+
+
+def downloaded(folder: str) -> dict[str, Any]:
+    files = [p for p in Path(folder).rglob("*") if p.is_file()]
+    if not files:
+        return {"ok": False, "error": "Kaggle returned no file"}
+    path = max(files, key=lambda p: p.stat().st_mtime)
+    raw = path.read_bytes()
+    if len(raw) > 2_000_000:
+        return {"ok": False, "error": "Downloaded file exceeds 2 MB", "file_name": path.name}
+    try:
+        return {"ok": True, "file_name": path.name, "text": raw.decode()}
+    except UnicodeDecodeError:
+        return {"ok": True, "file_name": path.name, "base64": base64.b64encode(raw).decode()}
+
+
+def call_tool(token: str, name: str, args: dict[str, Any]) -> dict[str, Any]:
+    if name in {"kaggle_auth_check", "kaggriculture_submissions"}:
+        r = run_kaggle(token, ["competitions", "submissions", COMP, "--format", "json"])
+        return content(r, not r.get("ok"))
+    if name == "kaggriculture_submit_source":
+        source = str(args.get("main_py", ""))
+        message = str(args.get("message", "")).strip()[:200]
+        if not source or len(source.encode()) > 1_000_000 or not message:
+            return content({"ok": False, "error": "main_py and message are required; main_py max 1 MB"}, True)
+        try:
+            compile(source, "main.py", "exec")
+        except SyntaxError as exc:
+            return content({"ok": False, "error": f"main.py syntax error: {exc}"}, True)
+        with tempfile.TemporaryDirectory() as folder:
+            main = Path(folder) / "main.py"
+            archive = Path(folder) / "submission.tar.gz"
+            main.write_text(source, encoding="utf-8")
+            with tarfile.open(archive, "w:gz") as tf:
+            
