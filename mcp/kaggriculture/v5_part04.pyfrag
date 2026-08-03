@@ -1,0 +1,25 @@
+, exist_ok=True)
+    try:
+        proc = subprocess.run([sys.executable, "-m", "kaggle", *args], capture_output=True, text=True, env=env, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "Kaggle command timed out"}
+    out, err = proc.stdout.strip(), proc.stderr.strip()
+    if proc.returncode:
+        return {"ok": False, "error": (err or out or f"exit {proc.returncode}")[-8000:], "exit_code": proc.returncode}
+    try:
+        value = json.loads(out) if out else None
+    except json.JSONDecodeError:
+        value = out
+    return {"ok": True, "result": value}
+
+
+def content(value: Any, error: bool = False) -> dict[str, Any]:
+    return {"content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False, indent=2, default=str)}], "isError": error}
+
+
+TOOLS = [
+    {"name": "kaggle_auth_check", "description": "Verify Kaggle access to Kaggriculture.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"title": "Check Kaggle connection", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": True}},
+    {"name": "kaggriculture_submissions", "description": "List Kaggriculture submissions and statuses.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}, "annotations": {"title": "List submissions", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": True}},
+    {"name": "kaggriculture_submit_source", "description": "Package main.py and submit it to Kaggriculture. Creates an external submission and requires confirmation.", "inputSchema": {"type": "object", "properties": {"main_py": {"type": "string"}, "message": {"type": "string", "minLength": 1, "maxLength": 200}}, "required": ["main_py", "message"], "additionalProperties": False}, "annotations": {"title": "Submit Kaggriculture agent", "readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": True}},
+    {"name": "kaggriculture_episodes", "description": "List episodes for a submission.", "inputSchema": {"type": "object", "properties": {"submission_id": {"type": "integer", "minimum": 1}}, "required": ["submission_id"], "additionalProperties": False}, "annotations": {"title": "List episodes", "readOnlyHint": True, "destructiveHint": False, "openWorldHint": True}},
+    {"name": "kaggriculture_replay", "description": "Download an episo
