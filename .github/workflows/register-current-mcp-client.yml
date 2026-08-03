@@ -1,0 +1,35 @@
+name: Register current MCP client
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  register:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Register public OAuth client
+        shell: bash
+        run: |
+          set -euo pipefail
+          response="$(curl --fail-with-body --silent --show-error \
+            -X POST 'https://kaggriculture-mcp.vercel.app/register' \
+            -H 'content-type: application/json' \
+            --data '{"redirect_uris":["https://chatgpt.com/connector_platform_oauth_redirect"],"token_endpoint_auth_method":"none","grant_types":["authorization_code","refresh_token"],"response_types":["code"],"scope":"kaggle:kaggriculture","client_name":"ChatGPT kag"}')"
+          RESPONSE="$response" python - <<'PY'
+          import json, os, pathlib
+          data = json.loads(os.environ['RESPONSE'])
+          client_id = data['client_id']
+          pathlib.Path('client_id.txt').write_text(client_id, encoding='utf-8')
+          print('CLIENT_ID=' + client_id)
+          PY
+      - name: Upload client ID
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-mcp-client-id
+          path: client_id.txt
+          retention-days: 1
