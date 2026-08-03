@@ -1,0 +1,34 @@
+("code_challenge", "")
+    if redirect not in client["redirects"] or not valid_redirect(redirect):
+        return oauth_error("invalid_request", "Redirect mismatch")
+    if q.get("code_challenge_method") != "S256" or len(challenge) < 43:
+        return oauth_error("invalid_request", "PKCE S256 required")
+    if q.get("scope", SCOPE) != SCOPE:
+        return oauth_error("invalid_scope", "Unsupported scope")
+    flow = seal("flow", {
+        "client_id": q.get("client_id"), "redirect": redirect, "challenge": challenge,
+        "state": q.get("state", ""), "scope": SCOPE,
+    }, 600)
+    return RedirectResponse(BASE + "/login?flow=" + flow, status_code=302)
+
+
+async def login(request: Request) -> HTMLResponse:
+    flow = request.query_params.get("flow", "")
+    try:
+        unseal(flow, "flow")
+    except ValueError:
+        return HTMLResponse("Invalid or expired authorization request", status_code=400)
+    safe = html.escape(flow, quote=True)
+    page = f"""<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Connect Kaggle</title><style>body{{font-family:system-ui;max-width:540px;margin:5rem auto;padding:0 1rem}}form{{display:grid;gap:1rem}}input,button{{font:inherit;padding:.8rem}}button{{background:#111;color:#fff}}</style></head><body><h1>Connect Kaggle</h1><p>Paste your Kaggle API token. It is encrypted into this connector session and is not logged.</p><form method='post' action='/login/callback' autocomplete='off'><input type='hidden' name='flow' value='{safe}'><label>Kaggle API token<input type='password' name='kaggle_token' required minlength='20' maxlength='500' autocomplete='new-password'></label><button type='submit'>Authorize ChatGPT</button></form></body></html>"""
+    return HTMLResponse(page, headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY"})
+
+
+async def login_callback(request: Request) -> Response:
+    form = parse_qs((await request.body()).decode("utf-8", "replace"), keep_blank_values=True)
+    flow_token = (form.get("flow") or [""])[0]
+    kaggle_token = (form.get("kaggle_token") or [""])[0].strip()
+    try:
+        flow = unseal(flow_token, "flow")
+    except ValueError:
+        return HTMLResponse("Invalid or expired authorization request", status_code=400)
+    if not 20 <= len(kaggle_token) <= 500 or any(ch.isspace() for c
