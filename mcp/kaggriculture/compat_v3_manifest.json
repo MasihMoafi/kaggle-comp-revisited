@@ -1,0 +1,17 @@
+{
+  "project_id": "prj_aJpnze0lAbisHHbAlOsQ498bRbit",
+  "team_id": "team_OdmzyQ7OrY2NBpxTT5Q6rZwR",
+  "production_name": "kaggriculture-mcp",
+  "public_url": "https://kaggriculture-mcp.vercel.app/mcp",
+  "branch": "kaggriculture-mcp-runtime",
+  "payload_files": [
+    "mcp/kaggriculture/compat_v3_p0.txt",
+    "mcp/kaggriculture/compat_v3_p1.txt",
+    "mcp/kaggriculture/compat_v3_p2.txt"
+  ],
+  "payload_sha256": "5b75fcf249366e1d4864fb9adfcd564cdf3f85592e1244b9fabb72cb33809b56",
+  "source_sha256": "5758a207c883a96f0ca3ec65ff67312a7873e7a93d86a16cd68c8e7c9c4e9733",
+  "requirements": "starlette>=0.47,<1\nuvicorn>=0.34,<1\ncryptography>=44,<46\nkaggle==2.2.4\n",
+  "vercel_json": "{\"rewrites\":[{\"source\":\"/(.*)\",\"destination\":\"/api/index\"}],\"functions\":{\"api/index.py\":{\"maxDuration\":60}}}",
+  "instructions": "After the Vercel API deployment quota resets, fetch the three payload files, verify the concatenated SHA-256, generate a fresh Fernet-compatible MCP_SECRET_KEY, deploy the payload as local api/p0.txt..api/p2.txt plus a loader that sets HOME=/tmp, KAGGLE_CONFIG_DIR=/tmp/.kaggle, MCP_SECRET_KEY to the generated value before executing the checksum-verified source. Deploy to production. Verify root, OAuth discovery, DCR POST /register, that the returned client_id is accepted by GET /authorize with PKCE, token exchange, and MCP 401 challenge. Do not ask the user to recreate anything unless the server is verified and the ChatGPT UI still requires it."
+}
